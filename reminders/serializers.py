@@ -1,6 +1,7 @@
 """
 Serializers for reminders app.
 Enforces ownership, validation, and assessment limits (max 3 reminders per CAT/Assignment).
+Supports standalone 'OTHER' category reminders not linked to any assessment.
 """
 
 from rest_framework import serializers
@@ -18,9 +19,10 @@ class ReminderSerializer(serializers.ModelSerializer):
         model = Reminder
         fields = (
             'id', 'user', 'cat', 'assignment',
+            'category',
             'assessment_type', 'assessment_id', 'assessment_title',
             'unit_name', 'unit_code',
-            'title', 'reminder_datetime', 'reminder_type',
+            'title', 'note', 'reminder_datetime', 'reminder_type',
             'is_completed', 'is_read',
             'created_at', 'updated_at'
         )
@@ -36,14 +38,14 @@ class ReminderSerializer(serializers.ModelSerializer):
             return obj.cat.unit.name
         elif obj.assignment:
             return obj.assignment.unit.name
-        return None
+        return ''
 
     def get_unit_code(self, obj):
         if obj.cat:
             return obj.cat.unit.code
         elif obj.assignment:
             return obj.assignment.unit.code
-        return None
+        return ''
 
     def get_assessment_type(self, obj):
         if obj.cat_id:
@@ -66,6 +68,7 @@ class ReminderSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         cat = attrs.get('cat', getattr(self.instance, 'cat', None))
         assignment = attrs.get('assignment', getattr(self.instance, 'assignment', None))
+        category = attrs.get('category', getattr(self.instance, 'category', Reminder.Category.OTHER))
 
         if cat and assignment:
             raise serializers.ValidationError({"detail": "A reminder cannot be associated with both a CAT and an Assignment."})
@@ -76,7 +79,15 @@ class ReminderSerializer(serializers.ModelSerializer):
         if assignment and assignment.unit.semester.academic_year.user != user:
             raise serializers.ValidationError({"detail": "Invalid Assignment or permission denied."})
 
-        # Check max 3 reminders limit on creation
+        # Auto-derive category from FK links
+        if cat:
+            attrs['category'] = Reminder.Category.CAT_REMINDER
+        elif assignment:
+            attrs['category'] = Reminder.Category.ASSIGNMENT_REMINDER
+        elif not cat and not assignment:
+            attrs['category'] = Reminder.Category.OTHER
+
+        # Check max 3 reminders limit on creation (only for assessment-linked reminders)
         if not self.instance:
             if cat and Reminder.objects.filter(cat=cat).count() >= 3:
                 raise serializers.ValidationError({"detail": "A CAT or Assignment can have a maximum of 3 reminders."})
@@ -103,9 +114,10 @@ class ReminderSyncSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reminder
         fields = (
-            'id', 'cat_id', 'assignment_id', 'assessment_type', 'assessment_id',
+            'id', 'cat_id', 'assignment_id', 'category',
+            'assessment_type', 'assessment_id',
             'unit_name', 'unit_code',
-            'title', 'reminder_datetime', 'reminder_type',
+            'title', 'note', 'reminder_datetime', 'reminder_type',
             'is_completed', 'is_read', 'updated_at'
         )
 
@@ -114,14 +126,14 @@ class ReminderSyncSerializer(serializers.ModelSerializer):
             return obj.cat.unit.name
         if obj.assignment:
             return obj.assignment.unit.name
-        return None
+        return ''
 
     def get_unit_code(self, obj):
         if obj.cat:
             return obj.cat.unit.code
         if obj.assignment:
             return obj.assignment.unit.code
-        return None
+        return ''
 
     def get_assessment_type(self, obj):
         if obj.cat_id:

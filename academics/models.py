@@ -101,6 +101,8 @@ class Unit(models.Model):
     name = models.CharField(max_length=200, help_text="e.g. 'Programming for Internet'")
     code = models.CharField(max_length=50, help_text="e.g. 'CS101'")
     description = models.TextField(blank=True, default='')
+    lecturer_name = models.CharField(max_length=200, blank=True, default='', help_text="Lecturer's full name")
+    lecturer_phone = models.CharField(max_length=30, blank=True, default='', help_text="Lecturer's phone number (optional)")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -123,3 +125,4 @@ class Unit(models.Model):
 
     def __str__(self):
         return f"{self.code} - {self.name}"
+

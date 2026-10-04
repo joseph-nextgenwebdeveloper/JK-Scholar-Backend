@@ -27,6 +27,7 @@ class ReminderViewSet(viewsets.ModelViewSet):
         is_completed = self.request.query_params.get('is_completed')
         is_read = self.request.query_params.get('is_read')
         reminder_type = self.request.query_params.get('reminder_type')
+        category = self.request.query_params.get('category')
 
         if cat_id:
             queryset = queryset.filter(cat_id=cat_id)
@@ -38,6 +39,8 @@ class ReminderViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_read=is_read.lower() in ('true', '1'))
         if reminder_type:
             queryset = queryset.filter(reminder_type=reminder_type.upper())
+        if category:
+            queryset = queryset.filter(category=category.upper())
 
         return queryset
 

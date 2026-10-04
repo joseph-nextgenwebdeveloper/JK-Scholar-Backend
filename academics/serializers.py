@@ -73,6 +73,7 @@ class UnitSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'semester', 'semester_name', 'academic_year_id',
             'name', 'code', 'description',
+            'lecturer_name', 'lecturer_phone',
             'notes_count', 'cats_count', 'assignments_count',
             'created_at', 'updated_at'
         )
@@ -96,3 +97,4 @@ class UnitSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"detail": "A semester can contain a maximum of 10 units."})
 
         return attrs
+
