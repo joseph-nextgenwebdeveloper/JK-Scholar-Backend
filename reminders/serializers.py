@@ -67,9 +67,6 @@ class ReminderSerializer(serializers.ModelSerializer):
         cat = attrs.get('cat', getattr(self.instance, 'cat', None))
         assignment = attrs.get('assignment', getattr(self.instance, 'assignment', None))
 
-        if not cat and not assignment:
-            raise serializers.ValidationError({"detail": "A reminder must be associated with either a CAT or an Assignment."})
-
         if cat and assignment:
             raise serializers.ValidationError({"detail": "A reminder cannot be associated with both a CAT and an Assignment."})
 

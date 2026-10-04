@@ -17,7 +17,7 @@ class UserSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'created_at', 'updated_at')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'school', 'degree', 'profile_photo', 'created_at', 'updated_at')
         read_only_fields = ('id', 'created_at', 'updated_at')
 
 
@@ -40,10 +40,13 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'password', 'password_confirm', 'first_name', 'last_name')
+        fields = ('id', 'username', 'email', 'password', 'password_confirm', 'first_name', 'last_name', 'school', 'degree', 'profile_photo')
         extra_kwargs = {
             'first_name': {'required': False},
             'last_name': {'required': False},
+            'school': {'required': False},
+            'degree': {'required': False},
+            'profile_photo': {'required': False},
         }
 
     def validate(self, attrs):
@@ -58,7 +61,10 @@ class RegisterSerializer(serializers.ModelSerializer):
             email=validated_data['email'],
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),
-            last_name=validated_data.get('last_name', '')
+            last_name=validated_data.get('last_name', ''),
+            school=validated_data.get('school', ''),
+            degree=validated_data.get('degree', ''),
+            profile_photo=validated_data.get('profile_photo', 'avatar1')
         )
         return user
 

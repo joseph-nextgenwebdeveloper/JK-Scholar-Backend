@@ -48,19 +48,28 @@ def _format_date(val):
     return str(val)
 
 
+def _to_reminder_dt(val):
+    dt = _to_datetime(val)
+    if not dt:
+        return None
+    # 1 day before at 9:00 AM (or 24 hours prior)
+    one_day_before = dt - datetime.timedelta(days=1)
+    # If 1 day before is in the past, use the event datetime itself
+    if one_day_before < timezone.now():
+        return dt
+    return one_day_before
+
+
 @receiver(post_save, sender=CAT)
 def sync_cat_automatic_reminder(sender, instance, created, **kwargs):
     """
-    Creates or updates the single default automatic reminder for a CAT.
+    Creates or updates the single default automatic reminder for a CAT (1 day before).
     """
     user = instance.unit.semester.academic_year.user
 
-    if instance.deadline:
-        deadline_str = _format_date(instance.deadline)
-        reminder_dt = _to_datetime(instance.deadline)
-    else:
-        deadline_str = _format_date(instance.cat_date)
-        reminder_dt = _to_datetime(instance.cat_date)
+    target_dt = instance.deadline or instance.cat_date
+    reminder_dt = _to_reminder_dt(target_dt)
+    deadline_str = _format_date(target_dt)
 
     title = f"{instance.unit.name} - {deadline_str}"
 
@@ -95,11 +104,13 @@ def sync_cat_automatic_reminder(sender, instance, created, **kwargs):
 @receiver(post_save, sender=Assignment)
 def sync_assignment_automatic_reminder(sender, instance, created, **kwargs):
     """
-    Creates or updates the single default automatic reminder for an Assignment.
+    Creates or updates the single default automatic reminder for an Assignment (1 day before).
     """
     user = instance.unit.semester.academic_year.user
-    deadline_str = _format_date(instance.deadline)
-    reminder_dt = _to_datetime(instance.deadline)
+    target_dt = instance.deadline
+    reminder_dt = _to_reminder_dt(target_dt)
+    deadline_str = _format_date(target_dt)
+
     title = f"{instance.unit.name} - {deadline_str}"
 
     existing_reminder = Reminder.objects.filter(

@@ -59,22 +59,17 @@ class Reminder(models.Model):
         verbose_name_plural = 'Reminders'
         constraints = [
             models.CheckConstraint(
-                condition=(
-                    (models.Q(cat__isnull=False) & models.Q(assignment__isnull=True)) |
-                    (models.Q(cat__isnull=True) & models.Q(assignment__isnull=False))
-                ),
-                name='reminder_cat_or_assignment_required'
+                condition=~(models.Q(cat__isnull=False) & models.Q(assignment__isnull=False)),
+                name='reminder_not_both_cat_and_assignment'
             )
         ]
 
     def clean(self):
         super().clean()
-        if not self.cat and not self.assignment:
-            raise ValidationError({"detail": "A reminder must be associated with either a CAT or an Assignment."})
         if self.cat and self.assignment:
             raise ValidationError({"detail": "A reminder cannot be associated with both a CAT and an Assignment."})
 
-        # Enforce maximum 3 reminders rule on creation
+        # Enforce maximum 3 reminders rule on creation for CAT / Assignment
         if not self.pk:
             if self.cat and Reminder.objects.filter(cat=self.cat).count() >= 3:
                 raise ValidationError({"detail": "A CAT or Assignment can have a maximum of 3 reminders."})
@@ -86,5 +81,10 @@ class Reminder(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        source = f"CAT: {self.cat.title}" if self.cat else f"Assignment: {self.assignment.title}"
+        if self.cat:
+            source = f"CAT: {self.cat.title}"
+        elif self.assignment:
+            source = f"Assignment: {self.assignment.title}"
+        else:
+            source = "Custom"
         return f"{self.title} ({source})"
