@@ -213,3 +213,8 @@ else:
         if origin.strip()
     ]
 CORS_ALLOW_CREDENTIALS = True
+
+
+# Note attachments (files are stored in the database)
+NOTE_MAX_ATTACHMENTS = 20                      # files per note
+NOTE_MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024    # 5 MB per file

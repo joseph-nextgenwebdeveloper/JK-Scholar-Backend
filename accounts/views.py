@@ -2,8 +2,12 @@
 Authentication views for Study Vault backend.
 """
 
+from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import generics, status, permissions
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -77,3 +81,53 @@ class CurrentUserView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+MAX_PHOTO_BYTES = 3 * 1024 * 1024  # 3 MB
+ALLOWED_PHOTO_TYPES = ('image/jpeg', 'image/png', 'image/webp', 'image/gif')
+
+
+class ProfilePhotoView(APIView):
+    """
+    Endpoint: /api/auth/me/photo/
+      GET    -> raw image bytes of the authenticated user's profile picture (404 if none)
+      POST   -> multipart upload, field name "photo" (JPEG/PNG/WEBP/GIF, max 3 MB)
+      DELETE -> remove the uploaded picture (falls back to the emoji avatar)
+    """
+    permission_classes = (permissions.IsAuthenticated,)
+    parser_classes = (MultiPartParser, FormParser)
+
+    def get(self, request):
+        user = request.user
+        if not user.photo_data:
+            return Response({"detail": "No profile photo."}, status=status.HTTP_404_NOT_FOUND)
+        response = HttpResponse(bytes(user.photo_data), content_type=user.photo_content_type or 'image/jpeg')
+        response['Cache-Control'] = 'private, max-age=0, must-revalidate'
+        return response
+
+    def post(self, request):
+        upload = request.FILES.get('photo')
+        if upload is None:
+            return Response({"detail": "No file uploaded (expected field 'photo')."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if upload.size > MAX_PHOTO_BYTES:
+            return Response({"detail": "Photo is too large. Maximum size is 3 MB."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        content_type = (upload.content_type or '').lower()
+        if content_type not in ALLOWED_PHOTO_TYPES:
+            return Response({"detail": "Unsupported image type. Use JPEG, PNG, WEBP or GIF."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        user = request.user
+        user.photo_data = upload.read()
+        user.photo_content_type = content_type
+        user.photo_updated_at = timezone.now()
+        user.save(update_fields=['photo_data', 'photo_content_type', 'photo_updated_at', 'updated_at'])
+        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+
+    def delete(self, request):
+        user = request.user
+        user.photo_data = None
+        user.photo_content_type = ''
+        user.photo_updated_at = timezone.now()
+        user.save(update_fields=['photo_data', 'photo_content_type', 'photo_updated_at', 'updated_at'])
+        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)

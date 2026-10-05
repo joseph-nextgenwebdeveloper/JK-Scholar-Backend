@@ -4,11 +4,11 @@ URL configuration for Study Vault / JK Scholar backend.
 Routes:
 - /health/                  Health check (HTTP 200) — used by cron job monitor
 - /admin/                   Django Administration
-- /api/auth/                User Registration, Login (JWT), Logout, Profile
+- /api/auth/                User Registration, Login (JWT), Logout, Profile (+ /api/auth/me/photo/)
 - /api/academic-years/      Academic Years CRUD
 - /api/semesters/           Semesters CRUD
 - /api/units/               Units CRUD
-- /api/notes/               Notes CRUD
+- /api/notes/               Notes CRUD (+ /api/notes/<id>/attachments/, /api/note-attachments/<id>/)
 - /api/cats/                CATs CRUD
 - /api/assignments/         Assignments CRUD
 - /api/reminders/           Reminders CRUD & /api/reminders/sync/

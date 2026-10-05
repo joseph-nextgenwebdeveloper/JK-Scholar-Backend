@@ -15,10 +15,16 @@ class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for reading and updating authenticated user information.
     """
+    has_photo = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'school', 'degree', 'profile_photo', 'created_at', 'updated_at')
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'school', 'degree', 'profile_photo',
+                  'has_photo', 'photo_updated_at', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'has_photo', 'photo_updated_at', 'created_at', 'updated_at')
+
+    def get_has_photo(self, obj):
+        return bool(obj.photo_data)
 
 
 class RegisterSerializer(serializers.ModelSerializer):

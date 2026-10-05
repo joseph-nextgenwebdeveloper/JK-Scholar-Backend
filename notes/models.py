@@ -28,3 +28,27 @@ class Note(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.unit.code})"
+
+
+class NoteAttachment(models.Model):
+    """
+    A file attached to a note.
+
+    The bytes are stored in the database so attachments survive redeploys on
+    hosts with an ephemeral filesystem and are reachable from any device the
+    student signs in on.
+    """
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='attachments', db_index=True)
+    filename = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100, blank=True, default='application/octet-stream')
+    size = models.PositiveIntegerField(default=0)
+    data = models.BinaryField(editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        verbose_name = 'Note attachment'
+        verbose_name_plural = 'Note attachments'
+
+    def __str__(self):
+        return f"{self.filename} ({self.size} bytes)"
