@@ -8,6 +8,22 @@ from rest_framework import serializers
 from .models import Reminder
 
 
+def normalise_repeat_days(value):
+    """'5, 1,1,3' -> '1,3,5'. Raises ValidationError on anything but weekday numbers 1-7."""
+    value = (value or '').strip()
+    if not value:
+        return ''
+    days = set()
+    for part in value.split(','):
+        part = part.strip()
+        if not (part.isascii() and part.isdigit()) or not 1 <= int(part) <= 7:
+            raise serializers.ValidationError(
+                "repeat_days must be comma-separated weekday numbers from 1 (Monday) to 7 (Sunday)."
+            )
+        days.add(int(part))
+    return ','.join(str(d) for d in sorted(days))
+
+
 class ReminderSerializer(serializers.ModelSerializer):
     unit_name = serializers.SerializerMethodField()
     unit_code = serializers.SerializerMethodField()
@@ -23,6 +39,7 @@ class ReminderSerializer(serializers.ModelSerializer):
             'assessment_type', 'assessment_id', 'assessment_title',
             'unit_name', 'unit_code',
             'title', 'note', 'reminder_datetime', 'reminder_type',
+            'repeat_days',
             'is_completed', 'is_read',
             'created_at', 'updated_at'
         )
@@ -32,6 +49,9 @@ class ReminderSerializer(serializers.ModelSerializer):
             'unit_name', 'unit_code',
             'created_at', 'updated_at'
         )
+
+    def validate_repeat_days(self, value):
+        return normalise_repeat_days(value)
 
     def get_unit_name(self, obj):
         if obj.cat:
@@ -118,6 +138,7 @@ class ReminderSyncSerializer(serializers.ModelSerializer):
             'assessment_type', 'assessment_id',
             'unit_name', 'unit_code',
             'title', 'note', 'reminder_datetime', 'reminder_type',
+            'repeat_days',
             'is_completed', 'is_read', 'updated_at'
         )
 

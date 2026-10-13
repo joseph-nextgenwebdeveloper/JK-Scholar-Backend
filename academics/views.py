@@ -3,6 +3,7 @@ Views for academics hierarchy: AcademicYear, Semester, and Unit.
 All endpoints strictly scoped to authenticated user.
 """
 
+from django.db.models import Count
 from rest_framework import viewsets, permissions
 from .models import AcademicYear, Semester, Unit
 from .serializers import AcademicYearSerializer, SemesterSerializer, UnitSerializer
@@ -17,7 +18,10 @@ class AcademicYearViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        return AcademicYear.objects.filter(user=self.request.user)
+        return (
+            AcademicYear.objects.filter(user=self.request.user)
+            .annotate(semesters_count=Count('semesters', distinct=True))
+        )
 
 
 class SemesterViewSet(viewsets.ModelViewSet):
@@ -30,7 +34,11 @@ class SemesterViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        queryset = Semester.objects.filter(academic_year__user=self.request.user)
+        queryset = (
+            Semester.objects.filter(academic_year__user=self.request.user)
+            .select_related('academic_year')
+            .annotate(units_count=Count('units', distinct=True))
+        )
         academic_year_id = self.request.query_params.get('academic_year')
         if academic_year_id:
             queryset = queryset.filter(academic_year_id=academic_year_id)
@@ -47,7 +55,15 @@ class UnitViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        queryset = Unit.objects.filter(semester__academic_year__user=self.request.user)
+        queryset = (
+            Unit.objects.filter(semester__academic_year__user=self.request.user)
+            .select_related('semester__academic_year')
+            .annotate(
+                notes_count=Count('notes', distinct=True),
+                cats_count=Count('cats', distinct=True),
+                assignments_count=Count('assignments', distinct=True),
+            )
+        )
         semester_id = self.request.query_params.get('semester')
         if semester_id:
             queryset = queryset.filter(semester_id=semester_id)

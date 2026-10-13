@@ -138,3 +138,39 @@ class AcademicHierarchyTests(APITestCase):
             'code': 'INT101'
         }, format='json')
         self.assertEqual(res_create_unit.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class AcademicYearFeatureTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='feat', email='feat@example.com', password='Password123!'
+        )
+        self.years_url = reverse('academics:academic-year-list')
+        self.client.force_authenticate(user=self.user)
+
+    def test_year_creation_auto_creates_two_inactive_semesters(self):
+        response = self.client.post(self.years_url, {'name': 'Year 1', 'cover': 'library'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['semesters_count'], 2)
+        self.assertEqual(response.data['cover'], 'library')
+        year = AcademicYear.objects.get(pk=response.data['id'])
+        semesters = list(year.semesters.order_by('id'))
+        self.assertEqual([s.name for s in semesters], ['First Semester', 'Second Semester'])
+        self.assertTrue(all(not s.is_active for s in semesters))
+
+    def test_activating_a_semester_deactivates_its_sibling(self):
+        year = AcademicYear.objects.create(user=self.user, name='Year 1')
+        first = Semester.objects.create(academic_year=year, name='First Semester', is_active=True)
+        second = Semester.objects.create(academic_year=year, name='Second Semester')
+        url = reverse('academics:semester-detail', kwargs={'pk': second.id})
+        response = self.client.patch(url, {'is_active': True}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertFalse(first.is_active)
+        self.assertTrue(second.is_active)
+
+    def test_unknown_cover_slug_rejected(self):
+        response = self.client.post(self.years_url, {'name': 'Year 1', 'cover': 'nope'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('cover', response.data)

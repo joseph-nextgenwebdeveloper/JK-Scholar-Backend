@@ -2,6 +2,7 @@
 Views for assessments app: CAT and Assignment.
 """
 
+from django.db.models import Count
 from rest_framework import viewsets, permissions
 from .models import CAT, Assignment
 from .serializers import CATSerializer, AssignmentSerializer
@@ -17,7 +18,11 @@ class CATViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        queryset = CAT.objects.filter(unit__semester__academic_year__user=self.request.user)
+        queryset = (
+            CAT.objects.filter(unit__semester__academic_year__user=self.request.user)
+            .select_related('unit')
+            .annotate(reminders_count=Count('reminders', distinct=True))
+        )
         unit_id = self.request.query_params.get('unit')
         if unit_id:
             queryset = queryset.filter(unit_id=unit_id)
@@ -34,7 +39,11 @@ class AssignmentViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        queryset = Assignment.objects.filter(unit__semester__academic_year__user=self.request.user)
+        queryset = (
+            Assignment.objects.filter(unit__semester__academic_year__user=self.request.user)
+            .select_related('unit')
+            .annotate(reminders_count=Count('reminders', distinct=True))
+        )
         unit_id = self.request.query_params.get('unit')
         status_param = self.request.query_params.get('status')
         if unit_id:

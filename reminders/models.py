@@ -68,6 +68,10 @@ class Reminder(models.Model):
         choices=ReminderType.choices,
         default=ReminderType.MANUAL
     )
+    repeat_days = models.CharField(
+        max_length=20, blank=True, default='',
+        help_text="Weekdays the alarm repeats on, comma-separated ISO numbers (1=Mon..7=Sun). Empty = one-time."
+    )
     is_completed = models.BooleanField(default=False)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -3,17 +3,44 @@ Serializers for academics app: AcademicYear, Semester, and Unit.
 Enforces business rules and ownership limits.
 """
 
+from django.db import transaction
 from rest_framework import serializers
 from .models import AcademicYear, Semester, Unit
 
 
+COVER_SLUGS = (
+    'library', 'graduation', 'science', 'globe', 'maths',
+    'code', 'biology', 'notes', 'ideas', 'campus',
+)
+
+DEFAULT_SEMESTER_NAMES = ('First Semester', 'Second Semester')
+
+
+def _count(obj, annotated_name, related_name):
+    """Use the queryset annotation when present, else fall back to a COUNT query."""
+    value = getattr(obj, annotated_name, None)
+    if value is None:
+        value = getattr(obj, related_name).count()
+    return value
+
+
 class AcademicYearSerializer(serializers.ModelSerializer):
-    semesters_count = serializers.IntegerField(source='semesters.count', read_only=True)
+    semesters_count = serializers.SerializerMethodField()
 
     class Meta:
         model = AcademicYear
-        fields = ('id', 'name', 'start_date', 'end_date', 'semesters_count', 'created_at', 'updated_at')
+        fields = ('id', 'name', 'start_date', 'end_date', 'cover', 'semesters_count', 'created_at', 'updated_at')
         read_only_fields = ('id', 'created_at', 'updated_at', 'semesters_count')
+
+    def get_semesters_count(self, obj):
+        return _count(obj, 'semesters_count', 'semesters')
+
+    def validate_cover(self, value):
+        if value and value not in COVER_SLUGS:
+            raise serializers.ValidationError(
+                "Invalid cover. Allowed values: " + ", ".join(COVER_SLUGS) + "."
+            )
+        return value
 
     def validate(self, attrs):
         user = self.context['request'].user
@@ -32,17 +59,26 @@ class AcademicYearSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
-        return super().create(validated_data)
+        with transaction.atomic():
+            year = AcademicYear.objects.create(**validated_data)
+            for name in DEFAULT_SEMESTER_NAMES:
+                Semester.objects.create(academic_year=year, name=name, is_active=False)
+        # No annotation on a freshly created instance: semesters_count falls back
+        # to a COUNT query and therefore reports 2.
+        return year
 
 
 class SemesterSerializer(serializers.ModelSerializer):
     academic_year_name = serializers.ReadOnlyField(source='academic_year.name')
-    units_count = serializers.IntegerField(source='units.count', read_only=True)
+    units_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Semester
-        fields = ('id', 'academic_year', 'academic_year_name', 'name', 'units_count', 'created_at', 'updated_at')
+        fields = ('id', 'academic_year', 'academic_year_name', 'name', 'is_active', 'units_count', 'created_at', 'updated_at')
         read_only_fields = ('id', 'created_at', 'updated_at', 'academic_year_name', 'units_count')
+
+    def get_units_count(self, obj):
+        return _count(obj, 'units_count', 'units')
 
     def validate_academic_year(self, value):
         user = self.context['request'].user
@@ -64,9 +100,9 @@ class SemesterSerializer(serializers.ModelSerializer):
 class UnitSerializer(serializers.ModelSerializer):
     semester_name = serializers.ReadOnlyField(source='semester.name')
     academic_year_id = serializers.ReadOnlyField(source='semester.academic_year_id')
-    notes_count = serializers.IntegerField(source='notes.count', read_only=True)
-    cats_count = serializers.IntegerField(source='cats.count', read_only=True)
-    assignments_count = serializers.IntegerField(source='assignments.count', read_only=True)
+    notes_count = serializers.SerializerMethodField()
+    cats_count = serializers.SerializerMethodField()
+    assignments_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Unit
@@ -81,6 +117,15 @@ class UnitSerializer(serializers.ModelSerializer):
             'id', 'created_at', 'updated_at', 'semester_name',
             'academic_year_id', 'notes_count', 'cats_count', 'assignments_count'
         )
+
+    def get_notes_count(self, obj):
+        return _count(obj, 'notes_count', 'notes')
+
+    def get_cats_count(self, obj):
+        return _count(obj, 'cats_count', 'cats')
+
+    def get_assignments_count(self, obj):
+        return _count(obj, 'assignments_count', 'assignments')
 
     def validate_semester(self, value):
         user = self.context['request'].user

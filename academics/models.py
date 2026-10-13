@@ -6,7 +6,8 @@ Enforces hierarchy limits:
 - Max 10 Units per Semester
 """
 
-from django.db import models
+from django.db import models, transaction
+from django.utils import timezone
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
@@ -25,6 +26,10 @@ class AcademicYear(models.Model):
     name = models.CharField(max_length=100, help_text="e.g. 'Year 1' or '2025/2026'")
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
+    cover = models.CharField(
+        max_length=30, blank=True, default='',
+        help_text="Slug of the cover picture shown in the app"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -63,6 +68,7 @@ class Semester(models.Model):
         db_index=True
     )
     name = models.CharField(max_length=100, help_text="e.g. 'Semester 1' or 'Term 2'")
+    is_active = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -81,7 +87,13 @@ class Semester(models.Model):
 
     def save(self, *args, **kwargs):
         self.full_clean()
-        super().save(*args, **kwargs)
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            if self.is_active:
+                # At most one active semester per academic year.
+                Semester.objects.filter(
+                    academic_year_id=self.academic_year_id, is_active=True
+                ).exclude(pk=self.pk).update(is_active=False, updated_at=timezone.now())
 
     def __str__(self):
         return f"{self.name} - {self.academic_year.name}"

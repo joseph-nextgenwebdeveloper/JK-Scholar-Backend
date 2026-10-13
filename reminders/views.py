@@ -21,7 +21,9 @@ class ReminderViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        queryset = Reminder.objects.filter(user=self.request.user)
+        queryset = Reminder.objects.filter(user=self.request.user).select_related(
+            'cat__unit', 'assignment__unit'
+        )
         cat_id = self.request.query_params.get('cat')
         assignment_id = self.request.query_params.get('assignment')
         is_completed = self.request.query_params.get('is_completed')
@@ -59,9 +61,10 @@ class ReminderViewSet(viewsets.ModelViewSet):
             except Exception:
                 pass  # Fallback to all reminders if timestamp is malformed
 
-        serializer = ReminderSyncSerializer(queryset, many=True)
+        items = list(queryset)
+        serializer = ReminderSyncSerializer(items, many=True)
         return Response({
             'server_time': timezone.now().isoformat(),
-            'count': queryset.count(),
+            'count': len(items),
             'reminders': serializer.data
         }, status=status.HTTP_200_OK)

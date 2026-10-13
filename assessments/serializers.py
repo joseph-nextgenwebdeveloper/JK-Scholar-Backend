@@ -9,7 +9,7 @@ from .models import CAT, Assignment
 class CATSerializer(serializers.ModelSerializer):
     unit_name = serializers.ReadOnlyField(source='unit.name')
     unit_code = serializers.ReadOnlyField(source='unit.code')
-    reminders_count = serializers.IntegerField(source='reminders.count', read_only=True)
+    reminders_count = serializers.SerializerMethodField()
 
     class Meta:
         model = CAT
@@ -19,6 +19,12 @@ class CATSerializer(serializers.ModelSerializer):
             'reminders_count', 'created_at', 'updated_at'
         )
         read_only_fields = ('id', 'created_at', 'updated_at', 'unit_name', 'unit_code', 'reminders_count')
+
+    def get_reminders_count(self, obj):
+        value = getattr(obj, 'reminders_count', None)
+        if value is None:
+            value = obj.reminders.count()
+        return value
 
     def validate_unit(self, value):
         user = self.context['request'].user
@@ -30,7 +36,7 @@ class CATSerializer(serializers.ModelSerializer):
 class AssignmentSerializer(serializers.ModelSerializer):
     unit_name = serializers.ReadOnlyField(source='unit.name')
     unit_code = serializers.ReadOnlyField(source='unit.code')
-    reminders_count = serializers.IntegerField(source='reminders.count', read_only=True)
+    reminders_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Assignment
@@ -40,6 +46,12 @@ class AssignmentSerializer(serializers.ModelSerializer):
             'reminders_count', 'created_at', 'updated_at'
         )
         read_only_fields = ('id', 'created_at', 'updated_at', 'unit_name', 'unit_code', 'reminders_count')
+
+    def get_reminders_count(self, obj):
+        value = getattr(obj, 'reminders_count', None)
+        if value is None:
+            value = obj.reminders.count()
+        return value
 
     def validate_unit(self, value):
         user = self.context['request'].user

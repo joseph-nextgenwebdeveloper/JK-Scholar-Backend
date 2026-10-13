@@ -174,3 +174,30 @@ class ReminderTests(APITestCase):
         self.assertIn('reminder_datetime', first_reminder)
         self.assertIn('unit_name', first_reminder)
         self.assertIn('assessment_type', first_reminder)
+
+
+class ReminderRepeatDaysTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='rep', email='rep@example.com', password='Password123!'
+        )
+        self.url = reverse('reminders:reminder-list')
+        self.client.force_authenticate(user=self.user)
+
+    def test_repeat_days_normalised(self):
+        response = self.client.post(self.url, {
+            'title': 'Alarm',
+            'reminder_datetime': '2026-11-25T10:00:00Z',
+            'repeat_days': '5,1,1,3',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['repeat_days'], '1,3,5')
+
+    def test_repeat_days_invalid_rejected(self):
+        response = self.client.post(self.url, {
+            'title': 'Alarm',
+            'reminder_datetime': '2026-11-25T10:00:00Z',
+            'repeat_days': '8',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('repeat_days', response.data)
