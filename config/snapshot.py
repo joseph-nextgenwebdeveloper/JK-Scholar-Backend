@@ -13,7 +13,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from academics.models import AcademicYear, Semester, Unit
-from academics.serializers import AcademicYearSerializer, SemesterSerializer, UnitSerializer
+from academics.models import PlannerEvent
+from academics.serializers import (AcademicYearSerializer, SemesterSerializer, UnitSerializer,
+                                   PlannerEventSerializer)
 from assessments.models import CAT, Assignment
 from assessments.serializers import CATSerializer, AssignmentSerializer
 from notes.models import Note, NoteAttachment, UnitFile
@@ -61,4 +63,7 @@ class SnapshotView(APIView):
             'assignments': AssignmentSerializer(assignments, many=True, context=ctx).data,
             'reminders': ReminderSerializer(reminders, many=True, context=ctx).data,
             'files': UnitFileSerializer(files, many=True, context=ctx).data,
+            'planner_events': PlannerEventSerializer(
+                PlannerEvent.objects.filter(user=user).select_related('unit'),
+                many=True, context=ctx).data,
         })

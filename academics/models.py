@@ -145,3 +145,35 @@ class Unit(models.Model):
     def __str__(self):
         return f"{self.code} - {self.name}"
 
+
+
+class PlannerEvent(models.Model):
+    """A class (repeats weekly) or a non-academic event on the student's planner."""
+
+    KIND_CLASS = 'CLASS'
+    KIND_EVENT = 'EVENT'
+    KIND_CHOICES = [(KIND_CLASS, 'Class'), (KIND_EVENT, 'Event')]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name='planner_events')
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=KIND_CLASS)
+    title = models.CharField(max_length=150)
+    unit = models.ForeignKey('Unit', null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name='planner_events')
+    location = models.CharField(max_length=150, blank=True, default='')
+    note = models.TextField(blank=True, default='')
+    # One-off events use `date`; weekly ones use `weekday` (1=Mon ... 7=Sun).
+    date = models.DateField(null=True, blank=True)
+    weekday = models.PositiveSmallIntegerField(null=True, blank=True)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    repeat_until = models.DateField(null=True, blank=True)
+    remind_minutes_before = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['weekday', 'date', 'start_time']
+
+    def __str__(self):
+        return f'{self.title} ({self.kind})'

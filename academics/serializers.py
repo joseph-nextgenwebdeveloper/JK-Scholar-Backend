@@ -148,3 +148,39 @@ class UnitSerializer(serializers.ModelSerializer):
 
         return attrs
 
+
+
+from .models import PlannerEvent  # noqa: E402
+
+
+class PlannerEventSerializer(serializers.ModelSerializer):
+    unit_name = serializers.CharField(source='unit.name', read_only=True, default='')
+    unit_code = serializers.CharField(source='unit.code', read_only=True, default='')
+
+    class Meta:
+        model = PlannerEvent
+        fields = [
+            'id', 'kind', 'title', 'unit', 'unit_name', 'unit_code', 'location', 'note',
+            'date', 'weekday', 'start_time', 'end_time', 'repeat_until',
+            'remind_minutes_before', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_unit(self, unit):
+        if unit and unit.semester.academic_year.user_id != self.context['request'].user.id:
+            raise serializers.ValidationError('Unknown unit.')
+        return unit
+
+    def validate(self, attrs):
+        inst = self.instance
+        get = lambda k: attrs.get(k, getattr(inst, k, None))  # noqa: E731
+        if get('kind') == PlannerEvent.KIND_CLASS and not get('weekday'):
+            raise serializers.ValidationError({'weekday': 'Choose the day of the week for a class.'})
+        if get('kind') == PlannerEvent.KIND_EVENT and not (get('date') or get('weekday')):
+            raise serializers.ValidationError({'date': 'Choose a date for the event.'})
+        wd = get('weekday')
+        if wd is not None and not 1 <= wd <= 7:
+            raise serializers.ValidationError({'weekday': 'Weekday must be 1 (Mon) to 7 (Sun).'})
+        if get('start_time') and get('end_time') and get('end_time') <= get('start_time'):
+            raise serializers.ValidationError({'end_time': 'End time must be after the start time.'})
+        return attrs

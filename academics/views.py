@@ -68,3 +68,19 @@ class UnitViewSet(viewsets.ModelViewSet):
         if semester_id:
             queryset = queryset.filter(semester_id=semester_id)
         return queryset
+
+
+from .models import PlannerEvent  # noqa: E402
+from .serializers import PlannerEventSerializer  # noqa: E402
+
+
+class PlannerEventViewSet(viewsets.ModelViewSet):
+    """Classes and non-academic events, scoped to the signed-in student."""
+    serializer_class = PlannerEventSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        return PlannerEvent.objects.filter(user=self.request.user).select_related('unit')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

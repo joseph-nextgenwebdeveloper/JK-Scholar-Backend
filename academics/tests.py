@@ -193,3 +193,25 @@ class SingleActiveSemesterTests(APITestCase):
         self.assertEqual([s['id'] for s in sems if s['is_active']], [other['id']])
         r = self.client.patch(f"/api/semesters/{other['id']}/", {'is_active': False}, format='json')
         self.assertEqual(r.status_code, 400)
+
+
+class PlannerEventTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='pl', email='pl@example.com', password='Password123!')
+        self.client.force_authenticate(self.user)
+
+    def test_weekly_class_roundtrip(self):
+        r = self.client.post('/api/planner-events/', {
+            'kind': 'CLASS', 'title': 'Economics', 'weekday': 1,
+            'start_time': '10:00', 'end_time': '13:00', 'location': 'Hall B'}, format='json')
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(self.client.get('/api/planner-events/').data['results'][0]['title'], 'Economics')
+
+    def test_class_needs_weekday_and_valid_times(self):
+        r = self.client.post('/api/planner-events/', {
+            'kind': 'CLASS', 'title': 'X', 'start_time': '10:00', 'end_time': '11:00'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post('/api/planner-events/', {
+            'kind': 'CLASS', 'title': 'X', 'weekday': 2,
+            'start_time': '12:00', 'end_time': '11:00'}, format='json')
+        self.assertEqual(r.status_code, 400)
