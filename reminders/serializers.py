@@ -40,11 +40,11 @@ class ReminderSerializer(serializers.ModelSerializer):
             'unit_name', 'unit_code',
             'title', 'note', 'reminder_datetime', 'reminder_type',
             'repeat_days',
-            'is_completed', 'is_read',
+            'is_completed', 'is_read', 'user_modified',
             'created_at', 'updated_at'
         )
         read_only_fields = (
-            'id', 'user', 'reminder_type',
+            'id', 'user', 'reminder_type', 'user_modified',
             'assessment_type', 'assessment_id', 'assessment_title',
             'unit_name', 'unit_code',
             'created_at', 'updated_at'
@@ -120,6 +120,13 @@ class ReminderSerializer(serializers.ModelSerializer):
         validated_data['user'] = self.context['request'].user
         validated_data['reminder_type'] = Reminder.ReminderType.MANUAL
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # Editing the time or title of any alarm (including the automatic CAT / assignment ones)
+        # is allowed; remember it so the automatic sync does not undo the edit.
+        if any(k in validated_data for k in ('reminder_datetime', 'title', 'note', 'repeat_days')):
+            validated_data['user_modified'] = True
+        return super().update(instance, validated_data)
 
 
 class ReminderSyncSerializer(serializers.ModelSerializer):

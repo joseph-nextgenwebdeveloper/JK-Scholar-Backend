@@ -74,6 +74,9 @@ class Reminder(models.Model):
     )
     is_completed = models.BooleanField(default=False)
     is_read = models.BooleanField(default=False)
+    # True once the student edited the time / title themselves. Automatic reminders that were
+    # edited are no longer overwritten when the CAT / assignment is saved again.
+    user_modified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True, db_index=True)
 

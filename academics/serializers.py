@@ -89,6 +89,11 @@ class SemesterSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         academic_year = attrs.get('academic_year', getattr(self.instance, 'academic_year', None))
 
+        # There is always exactly one active semester: switch by activating another one.
+        if self.instance and self.instance.is_active and attrs.get('is_active') is False:
+            raise serializers.ValidationError(
+                {"detail": "One semester must stay active. Make another semester active instead."})
+
         # Check maximum limit for creation
         if not self.instance and academic_year:
             if Semester.objects.filter(academic_year=academic_year).count() >= 3:

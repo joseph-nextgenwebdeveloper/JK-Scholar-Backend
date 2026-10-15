@@ -80,12 +80,14 @@ def sync_cat_automatic_reminder(sender, instance, created, **kwargs):
 
     if existing_reminder:
         updated = False
-        if existing_reminder.title != title:
-            existing_reminder.title = title
-            updated = True
-        if existing_reminder.reminder_datetime != reminder_dt:
-            existing_reminder.reminder_datetime = reminder_dt
-            updated = True
+        # A reminder the student edited keeps their time / title.
+        if not existing_reminder.user_modified:
+            if existing_reminder.title != title:
+                existing_reminder.title = title
+                updated = True
+            if existing_reminder.reminder_datetime != reminder_dt:
+                existing_reminder.reminder_datetime = reminder_dt
+                updated = True
         if existing_reminder.user != user:
             existing_reminder.user = user
             updated = True
@@ -120,12 +122,14 @@ def sync_assignment_automatic_reminder(sender, instance, created, **kwargs):
 
     if existing_reminder:
         updated = False
-        if existing_reminder.title != title:
-            existing_reminder.title = title
-            updated = True
-        if existing_reminder.reminder_datetime != reminder_dt:
-            existing_reminder.reminder_datetime = reminder_dt
-            updated = True
+        # A reminder the student edited keeps their time / title.
+        if not existing_reminder.user_modified:
+            if existing_reminder.title != title:
+                existing_reminder.title = title
+                updated = True
+            if existing_reminder.reminder_datetime != reminder_dt:
+                existing_reminder.reminder_datetime = reminder_dt
+                updated = True
         if existing_reminder.user != user:
             existing_reminder.user = user
             updated = True

@@ -12,11 +12,15 @@ Routes:
 - /api/cats/                CATs CRUD
 - /api/assignments/         Assignments CRUD
 - /api/reminders/           Reminders CRUD & /api/reminders/sync/
+- /api/files/               Unit file library (PDF / Word / ... upload, download)
+- /api/snapshot/            All main-screen data in one request
 """
 
 from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
+
+from .snapshot import SnapshotView
 
 
 def health_check(request):
@@ -30,6 +34,9 @@ urlpatterns = [
     path('health', health_check),
 
     path('admin/', admin.site.urls),
+
+    # Everything the main screens need, in one request
+    path('api/snapshot/', SnapshotView.as_view(), name='snapshot'),
 
     # Authentication endpoints
     path('api/auth/', include('accounts.urls')),

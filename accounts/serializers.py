@@ -55,6 +55,18 @@ class RegisterSerializer(serializers.ModelSerializer):
             'profile_photo': {'required': False},
         }
 
+    def validate_username(self, value):
+        value = (value or '').strip()
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("A user with that username already exists.")
+        return value
+
+    def validate_email(self, value):
+        value = (value or '').strip().lower()
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
+
     def validate(self, attrs):
         if attrs.get('password') != attrs.get('password_confirm'):
             raise serializers.ValidationError({"detail": "Passwords do not match."})

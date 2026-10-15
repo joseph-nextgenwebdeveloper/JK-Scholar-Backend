@@ -88,11 +88,18 @@ class Semester(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         with transaction.atomic():
+            # The very first semester a student creates becomes the active one.
+            if not self.pk and not self.is_active:
+                has_active = Semester.objects.filter(
+                    academic_year__user_id=self.academic_year.user_id, is_active=True
+                ).exists()
+                if not has_active:
+                    self.is_active = True
             super().save(*args, **kwargs)
             if self.is_active:
-                # At most one active semester per academic year.
+                # Only ONE active semester per student, across all academic years.
                 Semester.objects.filter(
-                    academic_year_id=self.academic_year_id, is_active=True
+                    academic_year__user_id=self.academic_year.user_id, is_active=True
                 ).exclude(pk=self.pk).update(is_active=False, updated_at=timezone.now())
 
     def __str__(self):

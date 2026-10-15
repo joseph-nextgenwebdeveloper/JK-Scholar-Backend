@@ -3,7 +3,7 @@ Serializers for notes app.
 """
 
 from rest_framework import serializers
-from .models import Note, NoteAttachment
+from .models import Note, NoteAttachment, UnitFile
 
 
 class NoteAttachmentSerializer(serializers.ModelSerializer):
@@ -36,3 +36,15 @@ class NoteSerializer(serializers.ModelSerializer):
         if value.semester.academic_year.user != user:
             raise serializers.ValidationError({"detail": "Invalid unit or permission denied."})
         return value
+
+
+class UnitFileSerializer(serializers.ModelSerializer):
+    """File metadata only - the bytes are served by the download endpoint."""
+    unit_name = serializers.ReadOnlyField(source='unit.name')
+    unit_code = serializers.ReadOnlyField(source='unit.code')
+
+    class Meta:
+        model = UnitFile
+        fields = ('id', 'unit', 'unit_name', 'unit_code', 'filename', 'content_type', 'size',
+                  'created_at', 'updated_at')
+        read_only_fields = fields

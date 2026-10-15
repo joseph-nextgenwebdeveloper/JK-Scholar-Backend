@@ -52,3 +52,27 @@ class NoteAttachment(models.Model):
 
     def __str__(self):
         return f"{self.filename} ({self.size} bytes)"
+
+
+class UnitFile(models.Model):
+    """
+    A document stored in a unit's file library (PDF, Word, slides, spreadsheets, images ...).
+
+    Like note attachments the bytes live in the database, so files survive redeploys on hosts
+    with an ephemeral disk and are available on every device the student signs in on.
+    """
+    unit = models.ForeignKey('academics.Unit', on_delete=models.CASCADE, related_name='files', db_index=True)
+    filename = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100, blank=True, default='application/octet-stream')
+    size = models.PositiveIntegerField(default=0)
+    data = models.BinaryField(editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Unit file'
+        verbose_name_plural = 'Unit files'
+
+    def __str__(self):
+        return f"{self.filename} ({self.unit.code})"

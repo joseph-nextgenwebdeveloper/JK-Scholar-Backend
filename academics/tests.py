@@ -148,7 +148,7 @@ class AcademicYearFeatureTests(APITestCase):
         self.years_url = reverse('academics:academic-year-list')
         self.client.force_authenticate(user=self.user)
 
-    def test_year_creation_auto_creates_two_inactive_semesters(self):
+    def test_year_creation_auto_creates_two_semesters_first_is_active(self):
         response = self.client.post(self.years_url, {'name': 'Year 1', 'cover': 'library'}, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['semesters_count'], 2)
@@ -156,7 +156,8 @@ class AcademicYearFeatureTests(APITestCase):
         year = AcademicYear.objects.get(pk=response.data['id'])
         semesters = list(year.semesters.order_by('id'))
         self.assertEqual([s.name for s in semesters], ['First Semester', 'Second Semester'])
-        self.assertTrue(all(not s.is_active for s in semesters))
+        # The student's very first semester becomes the (single) active one.
+        self.assertEqual([s.is_active for s in semesters], [True, False])
 
     def test_activating_a_semester_deactivates_its_sibling(self):
         year = AcademicYear.objects.create(user=self.user, name='Year 1')
@@ -174,3 +175,21 @@ class AcademicYearFeatureTests(APITestCase):
         response = self.client.post(self.years_url, {'name': 'Year 1', 'cover': 'nope'}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('cover', response.data)
+
+
+class SingleActiveSemesterTests(APITestCase):
+    def test_only_one_active_semester_across_years(self):
+        from django.contrib.auth import get_user_model
+        user = get_user_model().objects.create_user(username='u1', email='u1@example.com', password='x12345678!')
+        self.client.force_authenticate(user)
+        y1 = self.client.post('/api/academic-years/', {'name': 'First Year'}, format='json').data['id']
+        y2 = self.client.post('/api/academic-years/', {'name': 'Second Year'}, format='json').data['id']
+        sems = self.client.get('/api/semesters/').data['results']
+        self.assertEqual(sum(1 for s in sems if s['is_active']), 1)       # first one auto-activated
+        other = [s for s in sems if s['academic_year'] == y2][0]
+        r = self.client.patch(f"/api/semesters/{other['id']}/", {'is_active': True}, format='json')
+        self.assertEqual(r.status_code, 200)
+        sems = self.client.get('/api/semesters/').data['results']
+        self.assertEqual([s['id'] for s in sems if s['is_active']], [other['id']])
+        r = self.client.patch(f"/api/semesters/{other['id']}/", {'is_active': False}, format='json')
+        self.assertEqual(r.status_code, 400)

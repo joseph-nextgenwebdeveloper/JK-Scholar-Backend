@@ -184,14 +184,19 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 50,
+    'PAGE_SIZE': 500,
     'EXCEPTION_HANDLER': 'accounts.exceptions.custom_exception_handler',
 }
 
 
 # Simple JWT Configuration
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.getenv('ACCESS_TOKEN_LIFETIME_MINUTES', 60))),
+    # The access token is short-lived and silently renewed by the app. The refresh token is what
+    # decides how long a login lasts: 7 days of inactivity (every renewal issues a fresh 7-day
+    # refresh token, because ROTATE_REFRESH_TOKENS is on). After that the app logs the user out.
+    # NOTE: if ACCESS_TOKEN_LIFETIME_MINUTES / REFRESH_TOKEN_LIFETIME_DAYS are set in the host's
+    # environment variables they override these defaults.
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.getenv('ACCESS_TOKEN_LIFETIME_MINUTES', 720))),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=int(os.getenv('REFRESH_TOKEN_LIFETIME_DAYS', 7))),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
@@ -217,6 +222,25 @@ else:
     ]
 CORS_ALLOW_CREDENTIALS = True
 
+
+# Show tracebacks of unexpected errors (e.g. a failing /api/auth/register/) in the host's logs.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {'console': {'class': 'logging.StreamHandler'}},
+    'loggers': {
+        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
+        'accounts': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+    },
+}
+
+# Uploads are read into memory and stored in the database, so keep them modest.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
+
+# Unit files (PDF / Word / slides / images stored in the database)
+UNIT_FILE_MAX_BYTES = 15 * 1024 * 1024         # 15 MB per file
+UNIT_FILE_MAX_PER_UNIT = 50
 
 # Note attachments (files are stored in the database)
 NOTE_MAX_ATTACHMENTS = 20                      # files per note

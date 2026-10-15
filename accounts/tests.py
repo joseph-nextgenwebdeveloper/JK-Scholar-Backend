@@ -103,3 +103,27 @@ class AuthenticationTests(APITestCase):
         self.client.force_authenticate(user=user)
         logout_res = self.client.post(self.logout_url, {'refresh': refresh_token}, format='json')
         self.assertEqual(logout_res.status_code, status.HTTP_200_OK)
+
+
+class SessionAndRegisterHardeningTests(APITestCase):
+    def test_register_is_case_insensitive_on_email_and_username(self):
+        url = reverse('accounts:register')
+        base = {'username': 'Student1', 'email': 'Student1@Example.com',
+                'password': 'SecurePassword123!', 'password_confirm': 'SecurePassword123!'}
+        self.assertEqual(self.client.post(url, base, format='json').status_code, 201)
+        again = dict(base, username='student1', email='other@example.com')
+        self.assertEqual(self.client.post(url, again, format='json').status_code, 400)
+        again = dict(base, username='someone', email='STUDENT1@example.com')
+        self.assertEqual(self.client.post(url, again, format='json').status_code, 400)
+
+    def test_refresh_rotates_and_new_refresh_works(self):
+        User.objects.create_user(username='a', email='a@example.com', password='SecurePassword123!')
+        r = self.client.post(reverse('accounts:login'),
+                             {'username': 'a', 'password': 'SecurePassword123!'}, format='json')
+        refresh = r.data['refresh']
+        url = reverse('accounts:token_refresh')
+        r1 = self.client.post(url, {'refresh': refresh}, format='json')
+        self.assertEqual(r1.status_code, 200)
+        self.assertIn('refresh', r1.data)               # the client must keep this one
+        self.assertEqual(self.client.post(url, {'refresh': refresh}, format='json').status_code, 401)
+        self.assertEqual(self.client.post(url, {'refresh': r1.data['refresh']}, format='json').status_code, 200)
