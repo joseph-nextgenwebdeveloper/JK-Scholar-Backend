@@ -4,7 +4,9 @@ All endpoints strictly scoped to authenticated user.
 """
 
 from django.db.models import Count
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from .models import AcademicYear, Semester, Unit
 from .serializers import AcademicYearSerializer, SemesterSerializer, UnitSerializer
 
@@ -22,6 +24,33 @@ class AcademicYearViewSet(viewsets.ModelViewSet):
             AcademicYear.objects.filter(user=self.request.user)
             .annotate(semesters_count=Count('semesters', distinct=True))
         )
+
+    def destroy(self, request, *args, **kwargs):
+        """A year that already holds units can't be deleted (that would wipe its notes,
+        files and assessments). It can be made the active year instead."""
+        year = self.get_object()
+        units = Unit.objects.filter(semester__academic_year=year).count()
+        if units:
+            return Response(
+                {'detail': f'"{year.name}" has {units} unit{"s" if units != 1 else ""}, so it cannot be '
+                           f'deleted. You can make it your active year instead.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'])
+    def activate(self, request, pk=None):
+        """Make this year the current one: activates its first semester (the student
+        only ever has one active semester)."""
+        year = self.get_object()
+        sems = list(year.semesters.order_by('id'))
+        if not sems:
+            return Response({'detail': 'This year has no semesters yet.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not any(s.is_active for s in sems):
+            sem = sems[0]
+            sem.is_active = True
+            sem.save()
+        return Response({'detail': 'Year activated.', 'semester': next(s.id for s in year.semesters.order_by('id') if s.is_active)})
 
 
 class SemesterViewSet(viewsets.ModelViewSet):

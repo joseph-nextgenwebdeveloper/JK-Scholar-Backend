@@ -215,3 +215,28 @@ class PlannerEventTests(APITestCase):
             'kind': 'CLASS', 'title': 'X', 'weekday': 2,
             'start_time': '12:00', 'end_time': '11:00'}, format='json')
         self.assertEqual(r.status_code, 400)
+
+
+class YearDeleteRuleTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='yd', email='yd@example.com', password='Password123!')
+        self.client.force_authenticate(self.user)
+
+    def test_year_with_units_cannot_be_deleted_but_empty_year_can(self):
+        y = self.client.post('/api/academic-years/', {'name': 'Year 1'}, format='json').data['id']
+        sem = Semester.objects.filter(academic_year_id=y).first()
+        Unit.objects.create(semester=sem, name='Econ', code='EC1')
+        r = self.client.delete(f'/api/academic-years/{y}/')
+        self.assertEqual(r.status_code, 400)
+        self.assertTrue(AcademicYear.objects.filter(pk=y).exists())
+        y2 = self.client.post('/api/academic-years/', {'name': 'Year 2'}, format='json').data['id']
+        self.assertEqual(self.client.delete(f'/api/academic-years/{y2}/').status_code, 204)
+
+    def test_activate_year(self):
+        y1 = self.client.post('/api/academic-years/', {'name': 'Year 1'}, format='json').data['id']
+        y2 = self.client.post('/api/academic-years/', {'name': 'Year 2'}, format='json').data['id']
+        r = self.client.post(f'/api/academic-years/{y2}/activate/')
+        self.assertEqual(r.status_code, 200)
+        active = list(Semester.objects.filter(is_active=True, academic_year__user=self.user))
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0].academic_year_id, y2)

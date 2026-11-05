@@ -166,6 +166,11 @@ class PlannerEventSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def validate_remind_minutes_before(self, v):
+        if v > 7 * 24 * 60:
+            raise serializers.ValidationError('Choose a reminder of at most 7 days before.')
+        return v
+
     def validate_unit(self, unit):
         if unit and unit.semester.academic_year.user_id != self.context['request'].user.id:
             raise serializers.ValidationError('Unknown unit.')
