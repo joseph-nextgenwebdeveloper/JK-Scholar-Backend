@@ -70,3 +70,35 @@ class NoteTests(APITestCase):
         detail_url = reverse('notes:note-detail', kwargs={'pk': note2.id})
         get_res = self.client.get(detail_url)
         self.assertEqual(get_res.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class UnitFileSearchTests(APITestCase):
+    """Several documents per unit, and a server-side search over them."""
+
+    def setUp(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        self.Upload = SimpleUploadedFile
+        self.user = User.objects.create_user(username='fs', email='fs@example.com', password='Password123!')
+        self.client.force_authenticate(self.user)
+        year = AcademicYear.objects.create(user=self.user, name='Year 2')
+        sem = Semester.objects.create(academic_year=year, name='Semester 1')
+        self.unit = Unit.objects.create(semester=sem, name='Microeconomics', code='ECO201')
+
+    def _upload(self, name, content_type='application/pdf'):
+        return self.client.post('/api/files/', {
+            'unit': self.unit.id, 'file': self.Upload(name, b'x' * 10, content_type=content_type)},
+            format='multipart')
+
+    def test_multiple_documents_in_one_unit_and_search(self):
+        for n in ('lecture1.pdf', 'lecture2.docx', 'slides.pptx'):
+            self.assertEqual(self._upload(n).status_code, 201)
+        self.assertEqual(len(self.client.get(f'/api/files/?unit={self.unit.id}').data['results']), 3)
+        by = lambda q: sorted(f['filename'] for f in self.client.get(f'/api/files/?search={q}').data['results'])  # noqa: E731
+        self.assertEqual(by('pptx'), ['slides.pptx'])        # extension
+        self.assertEqual(by('eco201'), ['lecture1.pdf', 'lecture2.docx', 'slides.pptx'])  # unit code
+        self.assertEqual(by('micro+lecture1'.replace('+', ' ')), ['lecture1.pdf'])  # all words must match
+        self.assertEqual(by('year'), ['lecture1.pdf', 'lecture2.docx', 'slides.pptx'])  # academic year
+        self.assertEqual(by('nomatch'), [])
+        f = self.client.get('/api/files/?search=slides').data['results'][0]
+        self.assertEqual((f['extension'], f['semester_name'], f['academic_year_name']),
+                         ('pptx', 'Semester 1', 'Year 2'))

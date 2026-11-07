@@ -10,7 +10,9 @@ from django.dispatch import receiver
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
+from django.conf import settings
 from assessments.models import CAT, Assignment
+from academics.models import PlannerEvent, Semester
 from .models import Reminder
 
 
@@ -69,14 +71,19 @@ def sync_cat_automatic_reminder(sender, instance, created, **kwargs):
 
     target_dt = instance.deadline or instance.cat_date
     reminder_dt = _to_reminder_dt(target_dt)
-    deadline_str = _format_date(target_dt)
-
-    title = f"{instance.unit.name} - {deadline_str}"
 
     existing_reminder = Reminder.objects.filter(
         cat=instance,
         reminder_type=Reminder.ReminderType.AUTOMATIC
     ).first()
+
+    if not reminder_dt:
+        if existing_reminder and not existing_reminder.user_modified:
+            existing_reminder.delete()
+        return
+
+    deadline_str = _format_date(target_dt)
+    title = f"{instance.unit.name} - {deadline_str}"
 
     if existing_reminder:
         updated = False
@@ -111,14 +118,19 @@ def sync_assignment_automatic_reminder(sender, instance, created, **kwargs):
     user = instance.unit.semester.academic_year.user
     target_dt = instance.deadline
     reminder_dt = _to_reminder_dt(target_dt)
-    deadline_str = _format_date(target_dt)
-
-    title = f"{instance.unit.name} - {deadline_str}"
 
     existing_reminder = Reminder.objects.filter(
         assignment=instance,
         reminder_type=Reminder.ReminderType.AUTOMATIC
     ).first()
+
+    if not reminder_dt:
+        if existing_reminder and not existing_reminder.user_modified:
+            existing_reminder.delete()
+        return
+
+    deadline_str = _format_date(target_dt)
+    title = f"{instance.unit.name} - {deadline_str}"
 
     if existing_reminder:
         updated = False
@@ -143,3 +155,126 @@ def sync_assignment_automatic_reminder(sender, instance, created, **kwargs):
             reminder_datetime=reminder_dt,
             reminder_type=Reminder.ReminderType.AUTOMATIC
         )
+
+
+# ───────────────────────── Timetable classes / events → reminders ─────────────────────────
+#
+# A class repeats weekly, so it gets ONE repeating reminder (repeat_days = the weekday it rings
+# on, repeat_until = the end of its semester) instead of one row per week. Clients expand the
+# repetition locally, exactly as they already do for repeating alarms.
+
+def _class_tz():
+    """Class times are wall-clock times in the student's timezone, not UTC."""
+    import zoneinfo
+    try:
+        return zoneinfo.ZoneInfo(getattr(settings, 'CLASS_TIME_ZONE', 'Africa/Nairobi'))
+    except Exception:  # unknown tz name -> fall back to the server zone
+        return timezone.get_current_timezone()
+
+
+def class_window(event):
+    """(first_date, last_date) the event may occur on; either may be None (= unbounded).
+
+    The semester's real dates are used and never invented. An explicit
+    ``event.repeat_until`` can only shorten the window."""
+    first = last = None
+    sem = event.unit.semester if event.unit_id else None
+    if sem is not None:
+        first, last = sem.start_date, sem.end_date
+    if event.repeat_until and (last is None or event.repeat_until < last):
+        last = event.repeat_until
+    return first, last
+
+
+def next_occurrence(event, now=None):
+    """Next local (date, start datetime) the event happens on at/after ``now``; None if over."""
+    tz = _class_tz()
+    now = (now or timezone.now()).astimezone(tz)
+    first, last = class_window(event)
+    if event.kind == PlannerEvent.KIND_EVENT and event.date:
+        day = event.date
+        start = datetime.datetime.combine(day, event.start_time, tzinfo=tz)
+        return (day, start) if start >= now else None
+    if not event.weekday:
+        return None
+    day = now.date()
+    if first and day < first:
+        day = first
+    # advance to the right weekday
+    day += datetime.timedelta(days=(event.weekday - day.isoweekday()) % 7)
+    start = datetime.datetime.combine(day, event.start_time, tzinfo=tz)
+    if start < now:
+        day += datetime.timedelta(days=7)
+        start = datetime.datetime.combine(day, event.start_time, tzinfo=tz)
+    if last and day > last:
+        return None
+    return day, start
+
+
+def sync_planner_event_reminder(event):
+    """Create / update / retire the reminder that belongs to a class or event."""
+    from django.utils.dateparse import parse_time
+    # Objects built in code may still hold the raw strings they were given.
+    for f in ('start_time', 'end_time'):
+        if isinstance(getattr(event, f), str):
+            setattr(event, f, parse_time(getattr(event, f)))
+    for f in ('date', 'repeat_until'):
+        if isinstance(getattr(event, f), str):
+            setattr(event, f, parse_date(getattr(event, f)))
+    reminder = Reminder.objects.filter(planner_event=event).first()
+    tz = _class_tz()
+    minutes = event.remind_minutes_before or 0
+    occ = next_occurrence(event)
+    _, last = class_window(event)
+
+    if occ:
+        fire = occ[1] - datetime.timedelta(minutes=minutes)
+        finished = False
+    else:  # semester over / one-off event in the past: keep the row, but it is done
+        fire = datetime.datetime.combine(
+            last or event.date or timezone.now().astimezone(tz).date(), event.start_time, tzinfo=tz
+        ) - datetime.timedelta(minutes=minutes)
+        finished = True
+
+    repeats = event.kind == PlannerEvent.KIND_CLASS and bool(event.weekday)
+    repeat_days = str(fire.astimezone(tz).isoweekday()) if repeats else ''
+    label = 'Class' if event.kind == PlannerEvent.KIND_CLASS else 'Event'
+    title = f"{label}: {event.title}"
+    when = f"{event.start_time.strftime('%H:%M')}–{event.end_time.strftime('%H:%M')}"
+    note = when + (f" · {event.location}" if event.location else '')
+    if event.unit_id:
+        note = f"{event.unit.code} · {note}"
+
+    values = {
+        'user_id': event.user_id,
+        'category': Reminder.Category.CLASS_REMINDER,
+        'repeat_until': last if repeats else None,
+    }
+    if reminder is None:
+        Reminder.objects.create(
+            planner_event=event, title=title, note=note,
+            reminder_datetime=fire, repeat_days=repeat_days,
+            reminder_type=Reminder.ReminderType.AUTOMATIC, is_completed=finished, **values)
+        return
+    # An alarm the student edited keeps their own time / title / note.
+    if not reminder.user_modified:
+        reminder.title, reminder.note = title, note
+        reminder.reminder_datetime, reminder.repeat_days = fire, repeat_days
+        reminder.is_completed = finished
+    for k, v in values.items():
+        setattr(reminder, k, v)
+    reminder.save()
+
+
+@receiver(post_save, sender=PlannerEvent)
+def sync_planner_event_reminder_on_save(sender, instance, **kwargs):
+    sync_planner_event_reminder(instance)
+
+
+@receiver(post_save, sender=Semester)
+def resync_class_reminders_on_semester_change(sender, instance, **kwargs):
+    """Semester dates / active state changed: the reminders of its classes follow."""
+    for event in PlannerEvent.objects.filter(unit__semester=instance).select_related('unit__semester'):
+        sync_planner_event_reminder(event)
+    # Touch updated_at so incremental sync delivers the (re)appearing / vanishing reminders.
+    Reminder.objects.filter(planner_event__unit__semester=instance).update(updated_at=timezone.now())

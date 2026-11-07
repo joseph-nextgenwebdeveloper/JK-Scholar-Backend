@@ -34,21 +34,24 @@ class ReminderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reminder
         fields = (
-            'id', 'user', 'cat', 'assignment',
+            'id', 'user', 'cat', 'assignment', 'planner_event',
             'category',
             'assessment_type', 'assessment_id', 'assessment_title',
             'unit_name', 'unit_code',
             'title', 'note', 'reminder_datetime', 'reminder_type',
-            'repeat_days',
+            'repeat_days', 'repeat_until',
             'is_completed', 'is_read', 'user_modified',
             'created_at', 'updated_at'
         )
         read_only_fields = (
-            'id', 'user', 'reminder_type', 'user_modified',
+            'id', 'user', 'reminder_type', 'user_modified', 'planner_event',
             'assessment_type', 'assessment_id', 'assessment_title',
             'unit_name', 'unit_code',
             'created_at', 'updated_at'
         )
+        extra_kwargs = {
+            'reminder_datetime': {'required': False, 'allow_null': True},
+        }
 
     def validate_repeat_days(self, value):
         return normalise_repeat_days(value)
@@ -104,7 +107,9 @@ class ReminderSerializer(serializers.ModelSerializer):
             attrs['category'] = Reminder.Category.CAT_REMINDER
         elif assignment:
             attrs['category'] = Reminder.Category.ASSIGNMENT_REMINDER
-        elif not cat and not assignment:
+        elif self.instance is not None and self.instance.planner_event_id:
+            attrs['category'] = Reminder.Category.CLASS_REMINDER   # generated from a timetable class
+        else:
             attrs['category'] = Reminder.Category.OTHER
 
         # Check max 3 reminders limit on creation (only for assessment-linked reminders)
@@ -124,7 +129,7 @@ class ReminderSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # Editing the time or title of any alarm (including the automatic CAT / assignment ones)
         # is allowed; remember it so the automatic sync does not undo the edit.
-        if any(k in validated_data for k in ('reminder_datetime', 'title', 'note', 'repeat_days')):
+        if any(k in validated_data for k in ('reminder_datetime', 'title', 'note', 'repeat_days', 'repeat_until')):
             validated_data['user_modified'] = True
         return super().update(instance, validated_data)
 
@@ -141,11 +146,11 @@ class ReminderSyncSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reminder
         fields = (
-            'id', 'cat_id', 'assignment_id', 'category',
+            'id', 'cat_id', 'assignment_id', 'planner_event_id', 'category',
             'assessment_type', 'assessment_id',
             'unit_name', 'unit_code',
             'title', 'note', 'reminder_datetime', 'reminder_type',
-            'repeat_days',
+            'repeat_days', 'repeat_until',
             'is_completed', 'is_read', 'updated_at'
         )
 

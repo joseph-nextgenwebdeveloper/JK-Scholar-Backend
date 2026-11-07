@@ -68,6 +68,8 @@ class Semester(models.Model):
         db_index=True
     )
     name = models.CharField(max_length=100, help_text="e.g. 'Semester 1' or 'Term 2'")
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -84,6 +86,13 @@ class Semester(models.Model):
             current_count = Semester.objects.filter(academic_year=self.academic_year).count()
             if current_count >= 3:
                 raise ValidationError({"detail": "An academic year can contain a maximum of 3 semesters."})
+        # Auto-inherit start/end dates from parent academic year if not explicitly set
+        if not self.start_date and getattr(self, 'academic_year', None) and self.academic_year.start_date:
+            self.start_date = self.academic_year.start_date
+        if not self.end_date and getattr(self, 'academic_year', None) and self.academic_year.end_date:
+            self.end_date = self.academic_year.end_date
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValidationError({"detail": "Start date cannot be after end date."})
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -98,9 +107,16 @@ class Semester(models.Model):
             super().save(*args, **kwargs)
             if self.is_active:
                 # Only ONE active semester per student, across all academic years.
-                Semester.objects.filter(
+                others = Semester.objects.filter(
                     academic_year__user_id=self.academic_year.user_id, is_active=True
-                ).exclude(pk=self.pk).update(is_active=False, updated_at=timezone.now())
+                ).exclude(pk=self.pk)
+                other_ids = list(others.values_list('pk', flat=True))
+                others.update(is_active=False, updated_at=timezone.now())
+                # queryset.update() sends no post_save, so refresh their classes' reminders here.
+                if other_ids:
+                    from reminders.signals import resync_class_reminders_on_semester_change
+                    for sem in Semester.objects.filter(pk__in=other_ids):
+                        resync_class_reminders_on_semester_change(Semester, sem)
 
     def __str__(self):
         return f"{self.name} - {self.academic_year.name}"

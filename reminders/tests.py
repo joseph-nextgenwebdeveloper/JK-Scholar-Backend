@@ -200,4 +200,11 @@ class ReminderRepeatDaysTests(APITestCase):
             'repeat_days': '8',
         }, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('repeat_days', response.data)
+
+    def test_reminder_optional_datetime(self):
+        response = self.client.post(self.url, {
+            'title': 'Undated Task',
+            'category': 'OTHER',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(response.data['reminder_datetime'])

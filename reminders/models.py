@@ -30,6 +30,7 @@ class Reminder(models.Model):
         CAT_REMINDER = 'CAT_REMINDER', 'CAT Reminder'
         ASSIGNMENT_REMINDER = 'ASSIGNMENT_REMINDER', 'Assignment Reminder'
         OTHER = 'OTHER', 'Other Notification'
+        CLASS_REMINDER = 'CLASS_REMINDER', 'Class / Event Reminder'
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -53,6 +54,16 @@ class Reminder(models.Model):
         related_name='reminders',
         db_index=True
     )
+    # Set for reminders generated from a timetable class / event. Deleting the class
+    # deletes its reminder, editing the class re-syncs it (see reminders/signals.py).
+    planner_event = models.ForeignKey(
+        'academics.PlannerEvent',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='reminders',
+        db_index=True
+    )
     # Category makes the type explicit for filtering in the app
     category = models.CharField(
         max_length=30,
@@ -62,7 +73,7 @@ class Reminder(models.Model):
     )
     title = models.CharField(max_length=255)
     note = models.TextField(blank=True, default='', help_text='Optional note / description for this reminder')
-    reminder_datetime = models.DateTimeField(db_index=True)
+    reminder_datetime = models.DateTimeField(null=True, blank=True, db_index=True)
     reminder_type = models.CharField(
         max_length=20,
         choices=ReminderType.choices,
@@ -71,6 +82,10 @@ class Reminder(models.Model):
     repeat_days = models.CharField(
         max_length=20, blank=True, default='',
         help_text="Weekdays the alarm repeats on, comma-separated ISO numbers (1=Mon..7=Sun). Empty = one-time."
+    )
+    repeat_until = models.DateField(
+        null=True, blank=True,
+        help_text="Last date a repeating reminder may ring (e.g. the end of the semester). Empty = no end."
     )
     is_completed = models.BooleanField(default=False)
     is_read = models.BooleanField(default=False)
@@ -89,7 +104,9 @@ class Reminder(models.Model):
         super().clean()
 
         # A reminder must not be linked to BOTH a CAT and an Assignment
-        if self.cat and self.assignment:
+        if self.planner_event_id:
+            self.category = self.Category.CLASS_REMINDER
+        elif self.cat and self.assignment:
             raise ValidationError({"detail": "A reminder cannot be associated with both a CAT and an Assignment."})
 
         # Auto-derive category from FK links if not set manually

@@ -39,12 +39,24 @@ class NoteSerializer(serializers.ModelSerializer):
 
 
 class UnitFileSerializer(serializers.ModelSerializer):
-    """File metadata only - the bytes are served by the download endpoint."""
+    """File metadata only - the bytes are served by the download endpoint.
+
+    Carries the unit / semester / year names so a client can group and search without extra calls."""
     unit_name = serializers.ReadOnlyField(source='unit.name')
     unit_code = serializers.ReadOnlyField(source='unit.code')
+    semester = serializers.ReadOnlyField(source='unit.semester_id')
+    semester_name = serializers.ReadOnlyField(source='unit.semester.name')
+    academic_year = serializers.ReadOnlyField(source='unit.semester.academic_year_id')
+    academic_year_name = serializers.ReadOnlyField(source='unit.semester.academic_year.name')
+    extension = serializers.SerializerMethodField()
 
     class Meta:
         model = UnitFile
-        fields = ('id', 'unit', 'unit_name', 'unit_code', 'filename', 'content_type', 'size',
-                  'created_at', 'updated_at')
+        fields = ('id', 'unit', 'unit_name', 'unit_code', 'semester', 'semester_name',
+                  'academic_year', 'academic_year_name', 'filename', 'extension',
+                  'content_type', 'size', 'created_at', 'updated_at')
         read_only_fields = fields
+
+    def get_extension(self, obj):
+        name = obj.filename or ''
+        return name.rsplit('.', 1)[-1].lower() if '.' in name else ''

@@ -7,7 +7,7 @@ import os
 from urllib.parse import quote
 
 from django.conf import settings
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.http import HttpResponse
 from rest_framework import viewsets, permissions, status, mixins
 from rest_framework.decorators import action
@@ -119,7 +119,7 @@ class UnitFileViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.D
     """
     The file library of a unit (PDF, Word, PowerPoint, Excel, images ...).
 
-    GET    /api/files/                  list (optional ?unit=<id>)
+    GET    /api/files/                  list (optional ?unit= ?semester= ?academic_year= ?search=)
     POST   /api/files/                  upload: multipart fields "unit" and "file"
     DELETE /api/files/<id>/             remove
     GET    /api/files/<id>/download/    the file bytes
@@ -131,12 +131,26 @@ class UnitFileViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.D
     def get_queryset(self):
         queryset = (
             UnitFile.objects.filter(unit__semester__academic_year__user=self.request.user)
-            .select_related('unit')
+            .select_related('unit__semester__academic_year')
             .defer('data')
         )
-        unit_id = self.request.query_params.get('unit')
-        if unit_id:
-            queryset = queryset.filter(unit_id=unit_id)
+        params = self.request.query_params
+        if params.get('unit'):
+            queryset = queryset.filter(unit_id=params['unit'])
+        if params.get('semester'):
+            queryset = queryset.filter(unit__semester_id=params['semester'])
+        if params.get('academic_year'):
+            queryset = queryset.filter(unit__semester__academic_year_id=params['academic_year'])
+        # ?search= matches filename, extension, unit name / code, semester and academic year.
+        # Every word must match somewhere (AND), so "econ pdf 2025" narrows as you type.
+        for term in (params.get('search') or '').split():
+            queryset = queryset.filter(
+                Q(filename__icontains=term)
+                | Q(unit__name__icontains=term)
+                | Q(unit__code__icontains=term)
+                | Q(unit__semester__name__icontains=term)
+                | Q(unit__semester__academic_year__name__icontains=term)
+            )
         return queryset
 
     def create(self, request, *args, **kwargs):

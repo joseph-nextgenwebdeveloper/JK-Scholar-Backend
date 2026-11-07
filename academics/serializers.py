@@ -74,7 +74,7 @@ class SemesterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Semester
-        fields = ('id', 'academic_year', 'academic_year_name', 'name', 'is_active', 'units_count', 'created_at', 'updated_at')
+        fields = ('id', 'academic_year', 'academic_year_name', 'name', 'start_date', 'end_date', 'is_active', 'units_count', 'created_at', 'updated_at')
         read_only_fields = ('id', 'created_at', 'updated_at', 'academic_year_name', 'units_count')
 
     def get_units_count(self, obj):
@@ -88,6 +88,11 @@ class SemesterSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         academic_year = attrs.get('academic_year', getattr(self.instance, 'academic_year', None))
+        start_date = attrs.get('start_date', getattr(self.instance, 'start_date', None))
+        end_date = attrs.get('end_date', getattr(self.instance, 'end_date', None))
+
+        if start_date and end_date and start_date > end_date:
+            raise serializers.ValidationError({"detail": "Start date cannot be after end date."})
 
         # There is always exactly one active semester: switch by activating another one.
         if self.instance and self.instance.is_active and attrs.get('is_active') is False:
@@ -154,17 +159,33 @@ from .models import PlannerEvent  # noqa: E402
 
 
 class PlannerEventSerializer(serializers.ModelSerializer):
+    """A timetable class (weekly) or one-off event.
+
+    Classes are tied to a unit, and the unit's semester decides WHEN the class exists: it recurs
+    weekly only between the semester's start and end dates, and only while that semester is the
+    active one. The semester facts are returned (read-only) so every client applies the same rule
+    without a second request.
+    """
     unit_name = serializers.CharField(source='unit.name', read_only=True, default='')
     unit_code = serializers.CharField(source='unit.code', read_only=True, default='')
+    semester = serializers.IntegerField(source='unit.semester_id', read_only=True, default=None)
+    semester_name = serializers.CharField(source='unit.semester.name', read_only=True, default='')
+    semester_start = serializers.DateField(source='unit.semester.start_date', read_only=True, default=None)
+    semester_end = serializers.DateField(source='unit.semester.end_date', read_only=True, default=None)
+    semester_active = serializers.BooleanField(source='unit.semester.is_active', read_only=True, default=None)
+    academic_year_name = serializers.CharField(source='unit.semester.academic_year.name', read_only=True, default='')
 
     class Meta:
         model = PlannerEvent
         fields = [
-            'id', 'kind', 'title', 'unit', 'unit_name', 'unit_code', 'location', 'note',
+            'id', 'kind', 'title', 'unit', 'unit_name', 'unit_code',
+            'semester', 'semester_name', 'semester_start', 'semester_end', 'semester_active',
+            'academic_year_name', 'location', 'note',
             'date', 'weekday', 'start_time', 'end_time', 'repeat_until',
             'remind_minutes_before', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {'title': {'required': False, 'allow_blank': True}}
 
     def validate_remind_minutes_before(self, v):
         if v > 7 * 24 * 60:
@@ -179,13 +200,34 @@ class PlannerEventSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         inst = self.instance
         get = lambda k: attrs.get(k, getattr(inst, k, None))  # noqa: E731
-        if get('kind') == PlannerEvent.KIND_CLASS and not get('weekday'):
-            raise serializers.ValidationError({'weekday': 'Choose the day of the week for a class.'})
-        if get('kind') == PlannerEvent.KIND_EVENT and not (get('date') or get('weekday')):
+        kind, unit = get('kind'), get('unit')
+
+        if kind == PlannerEvent.KIND_CLASS:
+            if not get('weekday'):
+                raise serializers.ValidationError({'weekday': 'Choose the day of the week for a class.'})
+            if unit is None:
+                # Legacy classes saved before units were required may still be edited as they are.
+                if inst is None or inst.unit_id is not None or 'unit' in attrs:
+                    raise serializers.ValidationError({'unit': 'Choose the unit this class is for.'})
+            elif inst is None or 'unit' in attrs and (inst.unit_id != unit.id):
+                if not unit.semester.is_active:
+                    raise serializers.ValidationError(
+                        {'unit': 'Pick a unit from your active semester. Make that semester active first.'})
+        if kind == PlannerEvent.KIND_EVENT and not (get('date') or get('weekday')):
             raise serializers.ValidationError({'date': 'Choose a date for the event.'})
         wd = get('weekday')
         if wd is not None and not 1 <= wd <= 7:
             raise serializers.ValidationError({'weekday': 'Weekday must be 1 (Mon) to 7 (Sun).'})
         if get('start_time') and get('end_time') and get('end_time') <= get('start_time'):
             raise serializers.ValidationError({'end_time': 'End time must be after the start time.'})
+
+        # The class name comes from the unit: no free-typed, unrelated class names.
+        title = (attrs.get('title') if 'title' in attrs else getattr(inst, 'title', '')) or ''
+        if not title.strip():
+            if unit is not None and kind == PlannerEvent.KIND_CLASS:
+                attrs['title'] = unit.name
+            else:
+                raise serializers.ValidationError({'title': 'Enter a title.'})
+        elif unit is not None and kind == PlannerEvent.KIND_CLASS and 'title' not in attrs and inst is None:
+            attrs['title'] = unit.name
         return attrs

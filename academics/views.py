@@ -3,7 +3,7 @@ Views for academics hierarchy: AcademicYear, Semester, and Unit.
 All endpoints strictly scoped to authenticated user.
 """
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -109,7 +109,27 @@ class PlannerEventViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        return PlannerEvent.objects.filter(user=self.request.user).select_related('unit')
+        queryset = (
+            PlannerEvent.objects.filter(user=self.request.user)
+            .select_related('unit__semester__academic_year')
+        )
+        active_filter = self.request.query_params.get('active_semester')
+        if active_filter and active_filter.lower() in ('true', '1', 'yes'):
+            active_sem = Semester.objects.filter(
+                academic_year__user=self.request.user,
+                is_active=True
+            ).first()
+            if active_sem:
+                class_q = Q(kind=PlannerEvent.KIND_CLASS, unit__semester=active_sem)
+                event_q = Q(kind=PlannerEvent.KIND_EVENT, unit__isnull=True)
+                if active_sem.start_date:
+                    event_q &= (Q(date__isnull=True) | Q(date__gte=active_sem.start_date))
+                if active_sem.end_date:
+                    event_q &= (Q(date__isnull=True) | Q(date__lte=active_sem.end_date))
+                queryset = queryset.filter(class_q | event_q)
+            else:
+                queryset = queryset.filter(unit__isnull=True)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

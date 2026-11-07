@@ -42,6 +42,8 @@ db.sqlite3-journal
 # Logs
 *.log
 logs/
+datadump.json
+datadump_*.json
 
 # IDE & Editor Settings
 .vscode/

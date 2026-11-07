@@ -22,6 +22,7 @@ from notes.models import Note, NoteAttachment, UnitFile
 from notes.serializers import NoteSerializer, UnitFileSerializer
 from reminders.models import Reminder
 from reminders.serializers import ReminderSerializer
+from reminders.views import visible_reminders
 
 
 class SnapshotView(APIView):
@@ -48,8 +49,8 @@ class SnapshotView(APIView):
                 .select_related('unit').annotate(reminders_count=Count('reminders', distinct=True)))
         assignments = (Assignment.objects.filter(unit__semester__academic_year__user=user)
                        .select_related('unit').annotate(reminders_count=Count('reminders', distinct=True)))
-        reminders = (Reminder.objects.filter(user=user)
-                     .select_related('cat__unit', 'assignment__unit'))
+        reminders = visible_reminders(
+            Reminder.objects.filter(user=user).select_related('cat__unit', 'assignment__unit'))
         files = (UnitFile.objects.filter(unit__semester__academic_year__user=user)
                  .select_related('unit').defer('data'))
 
@@ -64,6 +65,6 @@ class SnapshotView(APIView):
             'reminders': ReminderSerializer(reminders, many=True, context=ctx).data,
             'files': UnitFileSerializer(files, many=True, context=ctx).data,
             'planner_events': PlannerEventSerializer(
-                PlannerEvent.objects.filter(user=user).select_related('unit'),
+                PlannerEvent.objects.filter(user=user).select_related('unit__semester__academic_year'),
                 many=True, context=ctx).data,
         })
