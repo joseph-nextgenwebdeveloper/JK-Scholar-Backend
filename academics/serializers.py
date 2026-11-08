@@ -15,6 +15,9 @@ COVER_SLUGS = (
 
 DEFAULT_SEMESTER_NAMES = ('First Semester', 'Second Semester')
 
+# A unit gets this many weekly class slots on the timetable. Raise it to let a unit meet more than once a week.
+MAX_CLASSES_PER_UNIT = 1
+
 
 def _count(obj, annotated_name, related_name):
     """Use the queryset annotation when present, else fall back to a COUNT query."""
@@ -213,6 +216,21 @@ class PlannerEventSerializer(serializers.ModelSerializer):
                 if not unit.semester.is_active:
                     raise serializers.ValidationError(
                         {'unit': 'Pick a unit from your active semester. Make that semester active first.'})
+            if unit is not None:
+                unit_changed = inst is None or ('unit' in attrs and inst.unit_id != unit.id)
+                if unit_changed:
+                    taken = PlannerEvent.objects.filter(
+                        user=self.context['request'].user, kind=PlannerEvent.KIND_CLASS, unit=unit)
+                    if inst is not None:
+                        taken = taken.exclude(pk=inst.pk)
+                    if taken.count() >= MAX_CLASSES_PER_UNIT:
+                        other = taken.first()
+                        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                        day = days[(other.weekday or 1) - 1]
+                        raise serializers.ValidationError({
+                            'unit': f'{unit.name} already has a class ({day} {other.start_time:%H:%M}-'
+                                    f'{other.end_time:%H:%M}). A unit can only have one class time: '
+                                    f'edit or delete that one first.'})
         if kind == PlannerEvent.KIND_EVENT and not (get('date') or get('weekday')):
             raise serializers.ValidationError({'date': 'Choose a date for the event.'})
         wd = get('weekday')
@@ -222,12 +240,10 @@ class PlannerEventSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'end_time': 'End time must be after the start time.'})
 
         # The class name comes from the unit: no free-typed, unrelated class names.
-        title = (attrs.get('title') if 'title' in attrs else getattr(inst, 'title', '')) or ''
-        if not title.strip():
-            if unit is not None and kind == PlannerEvent.KIND_CLASS:
-                attrs['title'] = unit.name
-            else:
-                raise serializers.ValidationError({'title': 'Enter a title.'})
-        elif unit is not None and kind == PlannerEvent.KIND_CLASS and 'title' not in attrs and inst is None:
+        if kind == PlannerEvent.KIND_CLASS and unit is not None:
             attrs['title'] = unit.name
+        else:
+            title = (attrs.get('title') if 'title' in attrs else getattr(inst, 'title', '')) or ''
+            if not title.strip():
+                raise serializers.ValidationError({'title': 'Enter a title.'})
         return attrs

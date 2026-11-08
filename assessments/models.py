@@ -24,6 +24,10 @@ class CAT(models.Model):
         blank=True,
         help_text="Specific deadline or start datetime if applicable"
     )
+    remind_minutes_before = models.PositiveIntegerField(
+        default=1440,
+        help_text="How many minutes before the CAT the alarm rings (0 = at the time itself)"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -55,6 +59,10 @@ class Assignment(models.Model):
     description = models.TextField(blank=True, default='')
     deadline = models.DateTimeField(help_text="Submission deadline datetime")
     submission_date = models.DateTimeField(null=True, blank=True)
+    remind_minutes_before = models.PositiveIntegerField(
+        default=1440,
+        help_text="How many minutes before the deadline the alarm rings (0 = at the time itself)"
+    )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,

@@ -50,27 +50,29 @@ def _format_date(val):
     return str(val)
 
 
-def _to_reminder_dt(val):
+def _to_reminder_dt(val, minutes_before=1440):
+    """When the alarm for a CAT / assignment rings: ``minutes_before`` ahead of its time.
+
+    If that moment has already passed but the CAT / assignment itself has not, the alarm rings at
+    the time itself instead of being lost."""
     dt = _to_datetime(val)
     if not dt:
         return None
-    # 1 day before at 9:00 AM (or 24 hours prior)
-    one_day_before = dt - datetime.timedelta(days=1)
-    # If 1 day before is in the past, use the event datetime itself
-    if one_day_before < timezone.now():
+    fire = dt - datetime.timedelta(minutes=minutes_before or 0)
+    if fire < timezone.now():
         return dt
-    return one_day_before
+    return fire
 
 
 @receiver(post_save, sender=CAT)
 def sync_cat_automatic_reminder(sender, instance, created, **kwargs):
     """
-    Creates or updates the single default automatic reminder for a CAT (1 day before).
+    Creates or updates the single automatic alarm for a CAT (rings ``remind_minutes_before`` ahead).
     """
     user = instance.unit.semester.academic_year.user
 
     target_dt = instance.deadline or instance.cat_date
-    reminder_dt = _to_reminder_dt(target_dt)
+    reminder_dt = _to_reminder_dt(target_dt, instance.remind_minutes_before)
 
     existing_reminder = Reminder.objects.filter(
         cat=instance,
@@ -113,11 +115,11 @@ def sync_cat_automatic_reminder(sender, instance, created, **kwargs):
 @receiver(post_save, sender=Assignment)
 def sync_assignment_automatic_reminder(sender, instance, created, **kwargs):
     """
-    Creates or updates the single default automatic reminder for an Assignment (1 day before).
+    Creates or updates the single automatic alarm for an Assignment (rings ``remind_minutes_before`` ahead).
     """
     user = instance.unit.semester.academic_year.user
     target_dt = instance.deadline
-    reminder_dt = _to_reminder_dt(target_dt)
+    reminder_dt = _to_reminder_dt(target_dt, instance.remind_minutes_before)
 
     existing_reminder = Reminder.objects.filter(
         assignment=instance,

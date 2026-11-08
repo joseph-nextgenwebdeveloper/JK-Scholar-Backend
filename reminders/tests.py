@@ -208,3 +208,46 @@ class ReminderRepeatDaysTests(APITestCase):
         }, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIsNone(response.data['reminder_datetime'])
+
+
+class AssessmentAlarmLeadTimeTests(APITestCase):
+    """CATs and assignments ring ``remind_minutes_before`` ahead of their time."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='lead', email='lead@example.com', password='Password123!')
+        self.client.force_authenticate(self.user)
+        year = AcademicYear.objects.create(user=self.user, name='Y')
+        sem = Semester.objects.create(academic_year=year, name='S', is_active=True)
+        self.unit = Unit.objects.create(semester=sem, name='Statistics', code='ST1')
+
+    def test_assignment_alarm_rings_the_chosen_minutes_before_deadline(self):
+        import datetime
+        from django.utils import timezone
+        deadline = timezone.now() + datetime.timedelta(days=3)
+        r = self.client.post('/api/assignments/', {
+            'unit': self.unit.id, 'title': 'Essay', 'deadline': deadline.isoformat(),
+            'remind_minutes_before': 10}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        rem = Reminder.objects.get(assignment_id=r.data['id'])
+        self.assertAlmostEqual(
+            (deadline - rem.reminder_datetime).total_seconds(), 10 * 60, delta=2)
+
+    def test_default_lead_time_is_still_one_day_and_editing_it_moves_the_alarm(self):
+        import datetime
+        from django.utils import timezone
+        deadline = timezone.now() + datetime.timedelta(days=5)
+        r = self.client.post('/api/assignments/', {
+            'unit': self.unit.id, 'title': 'Lab', 'deadline': deadline.isoformat()}, format='json')
+        rem = Reminder.objects.get(assignment_id=r.data['id'])
+        self.assertAlmostEqual((deadline - rem.reminder_datetime).total_seconds(), 24 * 3600, delta=2)
+        self.client.patch(f"/api/assignments/{r.data['id']}/", {'remind_minutes_before': 30}, format='json')
+        rem.refresh_from_db()
+        self.assertAlmostEqual((deadline - rem.reminder_datetime).total_seconds(), 30 * 60, delta=2)
+
+    def test_lead_time_over_seven_days_is_rejected(self):
+        import datetime
+        from django.utils import timezone
+        r = self.client.post('/api/assignments/', {
+            'unit': self.unit.id, 'title': 'X', 'remind_minutes_before': 99999,
+            'deadline': (timezone.now() + datetime.timedelta(days=2)).isoformat()}, format='json')
+        self.assertEqual(r.status_code, 400)

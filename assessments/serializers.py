@@ -15,7 +15,7 @@ class CATSerializer(serializers.ModelSerializer):
         model = CAT
         fields = (
             'id', 'unit', 'unit_name', 'unit_code',
-            'title', 'description', 'cat_date', 'deadline',
+            'title', 'description', 'cat_date', 'deadline', 'remind_minutes_before',
             'reminders_count', 'created_at', 'updated_at'
         )
         read_only_fields = ('id', 'created_at', 'updated_at', 'unit_name', 'unit_code', 'reminders_count')
@@ -24,6 +24,11 @@ class CATSerializer(serializers.ModelSerializer):
         value = getattr(obj, 'reminders_count', None)
         if value is None:
             value = obj.reminders.count()
+        return value
+
+    def validate_remind_minutes_before(self, value):
+        if value > 7 * 24 * 60:
+            raise serializers.ValidationError('Choose an alarm of at most 7 days before.')
         return value
 
     def validate_unit(self, value):
@@ -42,7 +47,7 @@ class AssignmentSerializer(serializers.ModelSerializer):
         model = Assignment
         fields = (
             'id', 'unit', 'unit_name', 'unit_code',
-            'title', 'description', 'deadline', 'submission_date', 'status',
+            'title', 'description', 'deadline', 'submission_date', 'status', 'remind_minutes_before',
             'reminders_count', 'created_at', 'updated_at'
         )
         read_only_fields = ('id', 'created_at', 'updated_at', 'unit_name', 'unit_code', 'reminders_count')
@@ -51,6 +56,11 @@ class AssignmentSerializer(serializers.ModelSerializer):
         value = getattr(obj, 'reminders_count', None)
         if value is None:
             value = obj.reminders.count()
+        return value
+
+    def validate_remind_minutes_before(self, value):
+        if value > 7 * 24 * 60:
+            raise serializers.ValidationError('Choose an alarm of at most 7 days before.')
         return value
 
     def validate_unit(self, value):

@@ -305,6 +305,32 @@ class PlannerEventTests(APITestCase):
         self.assertNotIn('Physics Lecture', titles)
         self.assertNotIn('Summer Trip', titles)
 
+    def test_unit_can_only_have_one_class_time(self):
+        unit = self._active_unit('ECO3')
+        body = {'kind': 'CLASS', 'unit': unit.id, 'weekday': 1, 'start_time': '10:00', 'end_time': '13:00'}
+        first = self.client.post('/api/planner-events/', body, format='json')
+        self.assertEqual(first.status_code, 201, first.data)
+        # same unit again, at a different time: refused
+        again = self.client.post('/api/planner-events/', {**body, 'weekday': 3, 'start_time': '08:00',
+                                                          'end_time': '09:00'}, format='json')
+        self.assertEqual(again.status_code, 400)
+        self.assertIn('unit', again.data)
+        # the existing class can still be edited (moved) without tripping the rule
+        moved = self.client.patch(f"/api/planner-events/{first.data['id']}/",
+                                  {'weekday': 2, 'start_time': '11:00', 'end_time': '12:00'}, format='json')
+        self.assertEqual(moved.status_code, 200, moved.data)
+        # deleting it frees the unit again
+        self.client.delete(f"/api/planner-events/{first.data['id']}/")
+        self.assertEqual(self.client.post('/api/planner-events/', body, format='json').status_code, 201)
+
+    def test_class_title_always_comes_from_the_unit(self):
+        unit = self._active_unit('ECO4')
+        r = self.client.post('/api/planner-events/', {
+            'kind': 'CLASS', 'unit': unit.id, 'title': '', 'weekday': 4,
+            'start_time': '10:00', 'end_time': '11:00'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['title'], unit.name)
+
 
 class YearDeleteRuleTests(APITestCase):
     def setUp(self):
